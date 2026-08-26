@@ -243,6 +243,13 @@ _AMBILIGHT_STYLE_MENU_FALLBACK = {
     },
 }
 
+_AMBILIGHT_STYLE_TO_MODE = {
+    "FOLLOW_VIDEO": "internal",
+    "FOLLOW_AUDIO": "internal",
+    "FOLLOW_COLOR": "lounge",
+    "Lounge light": "lounge",
+}
+
 
 def _ambilight_styles_menu_family(os_type: Optional[str]) -> Optional[str]:
     """Map a TV os_type to its ambilight menuSettings fallback family, or None.
@@ -1385,6 +1392,11 @@ class PhilipsTV(object):
                 return False
 
             self.ambilight_current_configuration = config
+
+            if not config.get("isExpert"):
+                mode = _AMBILIGHT_STYLE_TO_MODE.get(config.get("styleName"))
+                if mode is not None:
+                    self.ambilight_mode_raw = mode
 
             if self.quirk_ambilight_mode_ignored:
                 self.ambilight_mode_set = None

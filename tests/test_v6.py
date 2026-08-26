@@ -619,6 +619,32 @@ async def test_ambilight_current_configuration(client_mock, param):
     assert json.loads(respx.calls[-1].request.content) == data
 
 
+@pytest.mark.parametrize(
+    ("style", "is_expert", "expected_mode"),
+    [
+        ("FOLLOW_VIDEO", False, "internal"),
+        ("FOLLOW_AUDIO", False, "internal"),
+        ("FOLLOW_COLOR", False, "lounge"),
+        ("Lounge light", False, "lounge"),
+        ("FOLLOW_VIDEO", True, "expert"),
+        ("UNKNOWN", False, "expert"),
+    ],
+)
+async def test_current_configuration_updates_derived_mode(
+    client_mock, param, style, is_expert, expected_mode
+):
+    """A configuration write keeps the mode cache aligned with the TV."""
+    respx.post(f"{param.base}/ambilight/currentconfiguration").respond(json={})
+    await client_mock.getSystem()
+    client_mock.ambilight_mode_raw = "expert"
+
+    await client_mock.setAmbilightCurrentConfiguration(
+        {"styleName": style, "isExpert": is_expert}
+    )
+
+    assert client_mock.ambilight_mode_raw == expected_mode
+
+
 async def test_ambilight_supported_stypes(client_mock, param):
     await client_mock.getSystem()
     await client_mock.getAmbilightSupportedStyles()
