@@ -478,7 +478,7 @@ async def test_ambilight_power(client_mock, param):
 
 async def test_ambilight_off_via_currentconfiguration(client_mock, param):
     """Setting the configuration to OFF on quirked firmware darkens the LEDs by
-    writing zero cached pixels both before and after a switch to expert mode."""
+    writing zero cached pixels only when its OFF readback was rejected."""
     await client_mock.getSystem()
     if not client_mock.quirk_ambilight_mode_ignored:
         pytest.skip("Workaround only runs when quirk_ambilight_mode_ignored is True")
@@ -498,6 +498,13 @@ async def test_ambilight_off_via_currentconfiguration(client_mock, param):
 
     # The OFF configuration is posted as usual...
     assert json.loads(config_route.calls.last.request.content)["styleName"] == "OFF"
+    # ...then read back. The default fixture reports FOLLOW_VIDEO, so the
+    # fallback is needed on this simulated firmware.
+    assert any(
+        call.request.method == "GET"
+        and call.request.url.path == "/6/ambilight/currentconfiguration"
+        for call in respx.calls
+    )
     # ...the quirk switches to expert mode...
     assert json.loads(mode_route.calls.last.request.content) == {"current": "expert"}
     # ...and brackets that switch with two zeroed cached writes.
@@ -526,6 +533,35 @@ async def test_ambilight_off_via_currentconfiguration(client_mock, param):
             for px in pixels.values()
         )
     assert client_mock._ambilight_cached_off_active is True
+
+
+async def test_ambilight_off_skips_cached_workaround_when_confirmed(
+    client_mock, param
+):
+    """A TV that confirms OFF keeps its native off state without expert mode."""
+    await client_mock.getSystem()
+    if not client_mock.quirk_ambilight_mode_ignored:
+        pytest.skip("Workaround only runs when quirk_ambilight_mode_ignored is True")
+
+    await client_mock.getAmbilightCached()
+    off = {"styleName": "OFF", "isExpert": False, "menuSetting": ""}
+    config_route = respx.post(
+        f"{param.base}/ambilight/currentconfiguration"
+    ).respond(json={})
+    readback_route = respx.get(
+        f"{param.base}/ambilight/currentconfiguration"
+    ).respond(json=off)
+    mode_route = respx.post(f"{param.base}/ambilight/mode").respond(json={})
+    cached_route = respx.post(f"{param.base}/ambilight/cached").respond(json={})
+
+    await client_mock.setAmbilightCurrentConfiguration(off)
+
+    assert config_route.call_count == 1
+    assert readback_route.call_count == 1
+    assert mode_route.call_count == 0
+    assert cached_route.call_count == 0
+    assert client_mock.ambilight_current_configuration == off
+    assert client_mock._ambilight_cached_off_active is False
 
 
 async def test_ambilight_off_state_survives_follow_app_poll(client_mock, param):

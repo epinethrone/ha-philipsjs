@@ -414,11 +414,12 @@ class PhilipsTV(object):
         It will also not report a correct ambilight mode after being
         changed by call. So we need to remember last set mode.
 
-        It also ignores ambilight off: a POST to ambilight/currentconfiguration
-        with ``styleName`` ``"OFF"`` returns OK but the LEDs stay lit, so
-        setAmbilightCurrentConfiguration darkens them by writing zero cached
-        pixels around a switch to expert mode when the configuration is set
-        off. The zeros are written both before and after the switch: the
+        It can also ignore ambilight off: a POST to ambilight/currentconfiguration
+        with ``styleName`` ``"OFF"`` may return OK while the LEDs stay lit.
+        setAmbilightCurrentConfiguration reads the configuration back first,
+        and only if it is not OFF darkens the LEDs by writing zero cached
+        pixels around a switch to expert mode. The zeros are written both
+        before and after the switch: the
         pre-expert write lets renderer-driven firmwares (Android) darken
         without flashing the stale buffer when expert engages, while the
         post-expert write is what actually lands on firmwares that only honour
@@ -1417,16 +1418,19 @@ class PhilipsTV(object):
                     config.get("styleName") == "OFF"
                     and self.ambilight_cached_off is not None
                 ):
-                    cached_before = await self.setAmbilightCached(
-                        self.ambilight_cached_off
-                    )
-                    await self.setAmbilightMode("expert")
-                    cached_after = await self.setAmbilightCached(
-                        self.ambilight_cached_off
-                    )
-                    self._ambilight_cached_off_active = bool(
-                        cached_before or cached_after
-                    )
+                    self._ambilight_cached_off_active = False
+                    readback = await self.getReq("ambilight/currentconfiguration") or {}
+                    if readback.get("styleName") != "OFF":
+                        cached_before = await self.setAmbilightCached(
+                            self.ambilight_cached_off
+                        )
+                        await self.setAmbilightMode("expert")
+                        cached_after = await self.setAmbilightCached(
+                            self.ambilight_cached_off
+                        )
+                        self._ambilight_cached_off_active = bool(
+                            cached_before or cached_after
+                        )
                 elif config.get("styleName") != "OFF":
                     self._ambilight_cached_off_active = False
 
